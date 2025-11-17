@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEC Share Data</title>
+    <style>
+        :root {
+            --bg-color: #f4f7f9;
+            --text-color: #333;
+            --primary-color: #00529b;
+            --card-bg: #ffffff;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --max-color: #28a745;
+            --min-color: #dc3545;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .data-container {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+            padding: 1.5rem 2rem;
+            flex: 1;
+            min-width: 280px;
+            border-top: 5px solid;
+            transition: transform 0.2s ease-in-out;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .max-card { border-color: var(--max-color); }
+        .min-card { border-color: var(--min-color); }
+
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .card .company-name {
+            font-weight: bold;
+            color: var(--primary-color);
+            height: 1.5em; 
+            margin-bottom: 0.5rem;
+        }
+
+        .card .value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 1rem 0;
+            line-height: 1.1;
+        }
+
+        .max-card .value { color: var(--max-color); }
+        .min-card .value { color: var(--min-color); }
+
+        .card .year {
+            font-size: 1rem;
+            color: #666;
+        }
+        
+        .year span {
+            font-weight: 600;
+        }
+
+        .footer {
+            margin-top: 2.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .footer p {
+            margin-bottom: 1rem;
+        }
+
+        .footer input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 5px;
+            width: 150px;
+        }
+
+        .footer button {
+            padding: 10px 18px;
+            border: none;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .footer button:hover {
+            background-color: #003d73;
+        }
+
+        .error {
+            color: var(--min-color);
+            margin-top: 1rem;
+            height: 1em;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Fetching SEC Data...</h1>
+        <div class="data-container">
+            <div class="card max-card">
+                <h2>Highest Shares Outstanding</h2>
+                <p class="company-name" id="share-entity-name">...</p>
+                <p class="value" id="share-max-value">...</p>
+                <p class="year">Fiscal Year: <span id="share-max-fy">...</span></p>
+            </div>
+            <div class="card min-card">
+                <h2>Lowest Shares Outstanding</h2>
+                <p class="company-name">(post-2020 annual reports)</p>
+                <p class="value" id="share-min-value">...</p>
+                <p class="year">Fiscal Year: <span id="share-min-fy">...</span></p>
+            </div>
+        </div>
+        <div class="footer">
+            <p>
+                <label for="cikInput">Enter another CIK to search:</label><br>
+                <input type="text" id="cikInput" placeholder="e.g., 0001018724" maxlength="10">
+                <button id="cikSubmit">Load Data</button>
+            </p>
+            <p id="error-message" class="error"></p>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const defaultCik = '0000764180';
+
+            // Get DOM elements
+            const titleElement = document.querySelector('title');
+            const h1Element = document.querySelector('h1');
+            const entityNameElement = document.getElementById('share-entity-name');
+            const maxValueElement = document.getElementById('share-max-value');
+            const maxFyElement = document.getElementById('share-max-fy');
+            const minValueElement = document.getElementById('share-min-value');
+            const minFyElement = document.getElementById('share-min-fy');
+            const errorMessageElement = document.getElementById('error-message');
+            const cikInputElement = document.getElementById('cikInput');
+            const cikSubmitButton = document.getElementById('cikSubmit');
+
+            // Function to update the DOM with processed data
+            const updateDOM = (data) => {
+                if (!data || !data.entityName || data.error) {
+                    const errorMsg = data && data.error ? data.error : 'Could not load data for this CIK.';
+                    h1Element.textContent = 'Error';
+                    titleElement.textContent = 'Error';
+                    errorMessageElement.textContent = errorMsg;
+                    [entityNameElement, maxValueElement, maxFyElement, minValueElement, minFyElement].forEach(el => el.textContent = 'N/A');
+                    return;
+                }
+                
+                errorMessageElement.textContent = ''; // Clear previous errors
+                
+                // Sanitize entity name from common legal suffixes for display
+                const formattedEntityName = data.entityName
+                    .replace(/,?\s+INC\.?$/i, '')
+                    .replace(/,?\s+LLC\.?$/i, '')
+                    .replace(/,?\s+CORP\.?$/i, '');
+
+                titleElement.textContent = `${formattedEntityName} Share Data`;
+                h1Element.textContent = `Common Stock Shares Outstanding for ${formattedEntityName}`;
+                entityNameElement.textContent = formattedEntityName;
+                
+                if (data.max) {
+                    maxValueElement.textContent = data.max.val.toLocaleString();
+                    maxFyElement.textContent = data.max.fy;
+                } else {
+                    maxValueElement.textContent = 'N/A';
+                    maxFyElement.textContent = 'N/A';
+                }
+
+                if (data.min) {
+                    minValueElement.textContent = data.min.val.toLocaleString();
+                    minFyElement.textContent = data.min.fy;
+                } else {
+                     minValueElement.textContent = 'N/A';
+                     minFyElement.textContent = 'N/A';
+                }
+            };
+
+            // Function to fetch and process data from SEC
+            const fetchAndProcessData = async (cik) => {
+                const paddedCik = cik.toString().padStart(10, '0');
+                const secUrl = `https://data.sec.gov/api/xbrl/companyconcept/CIK${paddedCik}/dei/EntityCommonStockSharesOutstanding.json`;
+                // Using a CORS proxy to bypass browser restrictions
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(secUrl)}`;
+
+                // Set placeholder text while loading
+                h1Element.textContent = `Fetching data for CIK ${paddedCik}...`;
+                [entityNameElement, maxValueElement, maxFyElement, minValueElement, minFyElement].forEach(el => el.textContent = '...');
+                errorMessageElement.textContent = '';
+
+
+                try {
+                    // Per SEC guidance, a descriptive User-Agent should be set.
+                    // This is not possible in-browser via fetch API for security reasons.
+                    // A server-side or dedicated proxy would be needed to set this header.
+                    const response = await fetch(proxyUrl, { headers: { 'Accept': 'application/json' } });
+
+                    if (!response.ok) {
+                        throw new Error(`Data not found or API error (Status: ${response.status})`);
+                    }
+                    
+                    const rawData = await response.json();
+
+                    if (!rawData.units || !rawData.units.shares || rawData.units.shares.length === 0) {
+                        const entityName = rawData.entityName || 'Unknown Entity';
+                        throw new Error(`'EntityCommonStockSharesOutstanding' data not available for ${entityName}.`);
+                    }
+                    
+                    const entityName = rawData.entityName;
+
+                    // Filter data: fy > 2020, val is numeric, and from an annual report (10-K) for consistency.
+                    const filteredData = rawData.units.shares.filter(item => 
+                        item.fy > 2020 && typeof item.val === 'number' && item.form === '10-K'
+                    );
+                    
+                    if (filteredData.length === 0) {
+                       updateDOM({ entityName, error: 'No annual shares data found after 2020.' });
+                       return;
+                    }
+
+                    // Find min and max values
+                    const max = filteredData.reduce((prev, current) => (prev.val > current.val) ? prev : current);
+                    const min = filteredData.reduce((prev, current) => (prev.val < current.val) ? prev : current);
+
+                    updateDOM({ entityName, max, min });
+
+                } catch (error) {
+                    console.error('Fetch Error:', error);
+                    updateDOM({ error: error.message });
+                }
+            };
+            
+            // Function to handle loading CIK from URL or input
+            const loadCik = (cik) => {
+                 if (cik && /^\d{1,10}$/.test(cik)) {
+                    fetchAndProcessData(cik);
+                    const url = new URL(window.location);
+                    url.searchParams.set('CIK', cik.toString().padStart(10, '0'));
+                    window.history.pushState({ path: url.href }, '', url.href);
+                } else if (cik) {
+                    updateDOM({error: 'Invalid CIK format. Please use up to 10 digits.'});
+                } else {
+                    // This handles the initial load case with no CIK parameter
+                    fetchAndProcessData(defaultCik);
+                }
+            };
+
+            // --- Event Listeners and Initial Load ---
+            
+            cikSubmitButton.addEventListener('click', () => {
+                loadCik(cikInputElement.value.trim());
+            });
+
+            cikInputElement.addEventListener('keyup', (event) => {
+                if (event.key === 'Enter') {
+                    loadCik(cikInputElement.value.trim());
+                }
+            });
+
+            // Initial load logic
+            const urlParams = new URLSearchParams(window.location.search);
+            const cikFromUrl = urlParams.get('CIK');
+            
+            loadCik(cikFromUrl || defaultCik);
+
+        });
+    </script>
+    <!-- UID: TEST_BESE444 -->
+</body>
+</html>
